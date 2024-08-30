@@ -1,40 +1,40 @@
 import rclpy
 from rclpy.node import Node
 from std_msgs.msg import Float64MultiArray
-import sys
-from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QLabel
+from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QLabel, QSlider, QPushButton
 from PyQt5.QtCore import Qt
-import threading
+import sys
 
-class JointStatesSubscriber(Node):
-    def __init__(self, gui):
-        super().__init__('joint_states_subscriber')
-        self.gui = gui
-        self.subscription = self.create_subscription(
-            Float64MultiArray,
-            'robot/joint_states',
-            self.listener_callback,
-            10
-        )
+class JointPublisher(Node):
+    def __init__(self):
+        super().__init__('joint_publisher')
+        self.publisher = self.create_publisher(Float64MultiArray, 'robot/joint_update', 10)
+        self.joint_angles = [0.0] * 9  # Initialize joint angles
 
-    def listener_callback(self, msg):
-        # Update GUI with the received joint states
-        joint_angles = msg.data
-        self.gui.update_joint_angles(joint_angles)
+    def publish_joint_angles(self):
+        msg = Float64MultiArray()
+        msg.data = self.joint_angles
+        self.publisher.publish(msg)
+
+    def set_joint_angles(self, angles):
+        self.joint_angles = angles
 
 class JointControlGUI(QWidget):
     def __init__(self):
         super().__init__()
         self.init_ui()
-        self.joint_angles = [0.0] * 9
-        self.lock = threading.Lock()
 
         # Initialize ROS 2
         rclpy.init()
-        self.node = rclpy.create_node('gui_joint_control')
-        self.subscriber = JointStatesSubscriber(self)
-        self.ros_thread = threading.Thread(target=rclpy.spin, args=(self.node,), daemon=True)
-        self.ros_thread.start()
+        self.node = rclpy.create_node('joint_control_gui_node')
+
+        # Create a publisher node
+        self.publisher = JointPublisher()
+        
+        # Timer to process ROS 2 callbacks
+        self.timer = QTimer()
+        self.timer.timeout.connect(self.spin_ros)
+        self.timer.start(100)  # Adjust the timer interval as needed (in milliseconds)
 
     def init_ui(self):
         self.setWindowTitle('Joint Control GUI')
@@ -42,20 +42,42 @@ class JointControlGUI(QWidget):
         # Create layout
         layout = QVBoxLayout()
 
-        # Create labels for each joint angle
+        # Create sliders for each joint angle
+        self.sliders = []
         self.labels = []
         for i in range(9):
-            label = QLabel(f'Joint {i+1} Angle (radians): 0.0')
-            self.labels.append(label)
-            layout.addWidget(label)
+            slider_label = QLabel(f'Joint {i+1} Angle (radians): 0.0')
+            slider = QSlider(Qt.Horizontal)
+            slider.setMinimum(-180)
+            slider.setMaximum(180)
+            slider.setValue(0)
+            slider.setTickInterval(1)
+            slider.setTickPosition(QSlider.TicksBelow)
+            slider.valueChanged.connect(lambda value, idx=i: self.update_joint_angle(value, idx))
+            self.labels.append(slider_label)
+            self.sliders.append(slider)
+            layout.addWidget(slider_label)
+            layout.addWidget(slider)
+
+        # Create a button to publish joint angles
+        self.publish_button = QPushButton('Publish Joint Angles')
+        self.publish_button.clicked.connect(self.publish_joint_angles)
+        layout.addWidget(self.publish_button)
 
         self.setLayout(layout)
 
-    def update_joint_angles(self, joint_angles):
-        with self.lock:
-            self.joint_angles = joint_angles
-            for i in range(min(len(self.labels), len(joint_angles))):
-                self.labels[i].setText(f'Joint {i+1} Angle (radians): {joint_angles[i]:.2f}')
+    def update_joint_angle(self, value, idx):
+        # Update the joint angle in radians
+        angle = (value - 90) * 3.14159 / 180  # Convert from degrees to radians
+        self.publisher.set_joint_angles([angle if i == idx else ang for i, ang in enumerate(self.publisher.joint_angles)])
+        self.labels[idx].setText(f'Joint {idx+1} Angle (radians): {angle:.2f}')
+
+    def publish_joint_angles(self):
+        # Publish the joint angles
+        self.publisher.publish_joint_angles()
+
+    def spin_ros(self):
+        rclpy.spin_once(self.node, timeout_sec=0.1)
 
     def closeEvent(self, event):
         # Clean up ROS 2 resources
@@ -64,10 +86,10 @@ class JointControlGUI(QWidget):
         event.accept()
 
 def main():
-    app = QApplication([])
+    app = QApplication(sys.argv)
     gui = JointControlGUI()
     gui.show()
-    app.exec_()
+    sys.exit(app.exec_())
 
 if __name__ == '__main__':
     main()
