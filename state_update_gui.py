@@ -1,9 +1,10 @@
 import rclpy
 from rclpy.node import Node
 from std_msgs.msg import Float64MultiArray
-from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QLabel, QSlider, QPushButton
-from PyQt5.QtCore import Qt
+from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QLabel, QSlider, QPushButton, QHBoxLayout
+from PyQt5.QtCore import Qt, QTimer
 import sys
+import math
 
 class JointPublisher(Node):
     def __init__(self):
@@ -42,10 +43,14 @@ class JointControlGUI(QWidget):
         # Create layout
         layout = QVBoxLayout()
 
-        # Create sliders for each joint angle
+        # Create sliders and buttons for each joint angle
         self.sliders = []
         self.labels = []
+        self.increment_buttons = []
+        self.decrement_buttons = []
+
         for i in range(9):
+            # Create label and slider
             slider_label = QLabel(f'Joint {i+1} Angle (radians): 0.0')
             slider = QSlider(Qt.Horizontal)
             slider.setMinimum(-180)
@@ -54,26 +59,45 @@ class JointControlGUI(QWidget):
             slider.setTickInterval(1)
             slider.setTickPosition(QSlider.TicksBelow)
             slider.valueChanged.connect(lambda value, idx=i: self.update_joint_angle(value, idx))
-            self.labels.append(slider_label)
-            self.sliders.append(slider)
+            
+            # Create increment and decrement buttons
+            increment_button = QPushButton(f'+ Joint {i+1}')
+            increment_button.clicked.connect(lambda idx=i: self.adjust_joint_angle(idx, 0.1))
+            decrement_button = QPushButton(f'- Joint {i+1}')
+            decrement_button.clicked.connect(lambda idx=i: self.adjust_joint_angle(idx, -0.1))
+            
+            # Add widgets to layout
+            button_layout = QHBoxLayout()
+            button_layout.addWidget(increment_button)
+            button_layout.addWidget(decrement_button)
+            
             layout.addWidget(slider_label)
             layout.addWidget(slider)
-
-        # Create a button to publish joint angles
-        self.publish_button = QPushButton('Publish Joint Angles')
-        self.publish_button.clicked.connect(self.publish_joint_angles)
-        layout.addWidget(self.publish_button)
-
-        self.setLayout(layout)
+            layout.addLayout(button_layout)
+            
+            # Store widgets
+            self.labels.append(slider_label)
+            self.sliders.append(slider)
+            self.increment_buttons.append(increment_button)
+            self.decrement_buttons.append(decrement_button)
 
     def update_joint_angle(self, value, idx):
         # Update the joint angle in radians
-        angle = (value - 90) * 3.14159 / 180  # Convert from degrees to radians
+        angle = (value - 90) * math.pi / 180  # Convert from degrees to radians
         self.publisher.set_joint_angles([angle if i == idx else ang for i, ang in enumerate(self.publisher.joint_angles)])
         self.labels[idx].setText(f'Joint {idx+1} Angle (radians): {angle:.2f}')
 
-    def publish_joint_angles(self):
-        # Publish the joint angles
+    def adjust_joint_angle(self, idx, delta):
+        # Adjust the joint angle by delta radians
+        new_angle = self.publisher.joint_angles[idx] + delta
+        # Ensure the angle stays within [0, 2*pi] radians
+        new_angle = max(0.0, min(new_angle, 2 * math.pi))
+        self.publisher.set_joint_angles([new_angle if i == idx else ang for i, ang in enumerate(self.publisher.joint_angles)])
+        # Update slider and label
+        slider_value = new_angle * 180 / math.pi + 90  # Convert from radians to degrees
+        self.sliders[idx].setValue(slider_value)
+        self.labels[idx].setText(f'Joint {idx+1} Angle (radians): {new_angle:.2f}')
+        # Publish the updated angles
         self.publisher.publish_joint_angles()
 
     def spin_ros(self):
