@@ -1,121 +1,63 @@
+#!/usr/bin/env python
 import rclpy
-from rclpy.node import Node
+from rclpy.qos import qos_profile_default
 from std_msgs.msg import Float64MultiArray
-from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QLabel, QSlider, QPushButton, QHBoxLayout
-from PyQt5.QtCore import Qt, QTimer
+
 import sys
-import math
+import select
+import termios
+import tty
 
-class JointPublisher(Node):
-    def __init__(self):
-        super().__init__('joint_publisher')
-        self.publisher = self.create_publisher(Float64MultiArray, 'robot/joint_update', 10)
-        self.joint_angles = [0.0] * 9  # Initialize joint angles
+settings = termios.tcgetattr(sys.stdin)
 
-    def publish_joint_angles(self):
-        msg = Float64MultiArray()
-        msg.data = self.joint_angles
-        self.publisher.publish(msg)
+msg = """
+Reading from the keyboard and Publishing to Float64MultiArray!
+---------------------------
+Press any key to publish [0.1, 0.1, 0.1, 0.1, 0.1, 0.1] for each joint.
+CTRL-C to quit
+"""
 
-    def set_joint_angles(self, angles):
-        self.joint_angles = angles
+def getKey():
+    tty.setraw(sys.stdin.fileno())
+    select.select([sys.stdin], [], [], 0)
+    key = sys.stdin.read(1)
+    termios.tcsetattr(sys.stdin, termios.TCSADRAIN, settings)
+    return key
 
-class JointControlGUI(QWidget):
-    def __init__(self):
-        super().__init__()
-        self.setWindowTitle('Joint Control GUI')
-        self.setGeometry(100, 100, 400, 600)  # Set window size and position
-        self.init_ui()
+def main(args=None):
+    if args is None:
+        args = sys.argv
 
-        # Initialize ROS 2
-        rclpy.init()
-        self.node = rclpy.create_node('joint_control_gui_node')
+    rclpy.init(args)
+    node = rclpy.create_node('float64_multiarray_publisher')
 
-        # Create a publisher node
-        self.publisher = JointPublisher()
-        
-        # Timer to process ROS 2 callbacks
-        self.timer = QTimer()
-        self.timer.timeout.connect(self.spin_ros)
-        self.timer.start(100)  # Adjust the timer interval as needed (in milliseconds)
+    pub = node.create_publisher(Float64MultiArray, 'root_joint_state_update', qos_profile_default)
 
-    def init_ui(self):
-        # Create layout
-        layout = QVBoxLayout()
+    try:
+        print(msg)
+        while True:
+            key = getKey()
 
-        # Create sliders and buttons for each joint angle
-        self.sliders = []
-        self.labels = []
-        self.increment_buttons = []
-        self.decrement_buttons = []
+            if key:
+                float64_array_msg = Float64MultiArray()
+                float64_array_msg.data = [0.1] * 6
 
-        for i in range(9):
-            # Create label and slider
-            slider_label = QLabel(f'Joint {i+1} Angle (radians): 0.0')
-            slider = QSlider(Qt.Horizontal)
-            slider.setMinimum(-180)
-            slider.setMaximum(180)
-            slider.setValue(90)  # Center slider at 0 radians
-            slider.setTickInterval(10)
-            slider.setTickPosition(QSlider.TicksBelow)
-            slider.valueChanged.connect(lambda value, idx=i: self.update_joint_angle(value, idx))
-            
-            # Create increment and decrement buttons
-            increment_button = QPushButton(f'+ Joint {i+1}')
-            increment_button.clicked.connect(lambda idx=i: self.adjust_joint_angle(idx, 0.1))
-            decrement_button = QPushButton(f'- Joint {i+1}')
-            decrement_button.clicked.connect(lambda idx=i: self.adjust_joint_angle(idx, -0.1))
-            
-            # Add widgets to layout
-            button_layout = QHBoxLayout()
-            button_layout.addWidget(increment_button)
-            button_layout.addWidget(decrement_button)
-            
-            layout.addWidget(slider_label)
-            layout.addWidget(slider)
-            layout.addLayout(button_layout)
-            
-            # Store widgets
-            self.labels.append(slider_label)
-            self.sliders.append(slider)
-            self.increment_buttons.append(increment_button)
-            self.decrement_buttons.append(decrement_button)
+                pub.publish(float64_array_msg)
 
-        self.setLayout(layout)
+            if key == '\x03':  # CTRL-C
+                break
 
-    def update_joint_angle(self, value, idx):
-        # Update the joint angle in radians
-        angle = (value - 90) * math.pi / 180  # Convert from degrees to radians
-        self.publisher.set_joint_angles([angle if i == idx else ang for i, ang in enumerate(self.publisher.joint_angles)])
-        self.labels[idx].setText(f'Joint {idx+1} Angle (radians): {angle:.2f}')
+    except KeyboardInterrupt:
+        pass
 
-    def adjust_joint_angle(self, idx, delta):
-        # Adjust the joint angle by delta radians
-        new_angle = self.publisher.joint_angles[idx] + delta
-        # Ensure the angle stays within [0, 2*pi] radians
-        new_angle = max(0.0, min(new_angle, 2 * math.pi))
-        self.publisher.set_joint_angles([new_angle if i == idx else ang for i, ang in enumerate(self.publisher.joint_angles)])
-        # Update slider and label
-        slider_value = new_angle * 180 / math.pi + 90  # Convert from radians to degrees
-        self.sliders[idx].setValue(slider_value)
-        self.labels[idx].setText(f'Joint {idx+1} Angle (radians): {new_angle:.2f}')
-        # Publish the updated angles
-        self.publisher.publish_joint_angles()
+    finally:
+        # Ensure joints are in neutral position upon exit
+        float64_array_msg = Float64MultiArray()
+        float64_array_msg.data = [0.0] * 6
+        pub.publish(float64_array_msg)
 
-    def spin_ros(self):
-        rclpy.spin_once(self.node, timeout_sec=0.1)
-
-    def closeEvent(self, event):
-        # Clean up ROS 2 resources
-        self.node.destroy_node()
+        termios.tcsetattr(sys.stdin, termios.TCSADRAIN, settings)
         rclpy.shutdown()
-        event.accept()
-
-def main():
-    app = QApplication(sys.argv)
-    gui = JointControlGUI()
-    gui.show()
-    sys.exit(app.exec_())
 
 if __name__ == '__main__':
     main()
