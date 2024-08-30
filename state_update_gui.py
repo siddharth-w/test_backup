@@ -23,6 +23,8 @@ class JointPublisher(Node):
 class JointControlGUI(QWidget):
     def __init__(self):
         super().__init__()
+        self.setWindowTitle('Joint Control GUI')
+        self.setGeometry(100, 100, 400, 600)  # Set window size and position
         self.init_ui()
 
         # Initialize ROS 2
@@ -38,8 +40,6 @@ class JointControlGUI(QWidget):
         self.timer.start(100)  # Adjust the timer interval as needed (in milliseconds)
 
     def init_ui(self):
-        self.setWindowTitle('Joint Control GUI')
-
         # Create layout
         layout = QVBoxLayout()
 
@@ -55,8 +55,8 @@ class JointControlGUI(QWidget):
             slider = QSlider(Qt.Horizontal)
             slider.setMinimum(-180)
             slider.setMaximum(180)
-            slider.setValue(0)
-            slider.setTickInterval(1)
+            slider.setValue(90)  # Center slider at 0 radians
+            slider.setTickInterval(10)
             slider.setTickPosition(QSlider.TicksBelow)
             slider.valueChanged.connect(lambda value, idx=i: self.update_joint_angle(value, idx))
             
@@ -80,6 +80,8 @@ class JointControlGUI(QWidget):
             self.sliders.append(slider)
             self.increment_buttons.append(increment_button)
             self.decrement_buttons.append(decrement_button)
+
+        self.setLayout(layout)
 
     def update_joint_angle(self, value, idx):
         # Update the joint angle in radians
