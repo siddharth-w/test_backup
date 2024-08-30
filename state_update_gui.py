@@ -2,7 +2,7 @@
 import rclpy
 from rclpy.node import Node
 from std_msgs.msg import Float64MultiArray
-from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QSlider, QLabel, QPushButton
+from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QSlider, QLabel, QPushButton, QHBoxLayout
 from PyQt5.QtCore import Qt
 import math
 from threading import Lock, Thread
@@ -14,10 +14,9 @@ class JointControlGUI(QWidget):
         # Initialize ROS 2
         rclpy.init()
         self.node = rclpy.create_node('gui_joint_control')
-        self.pub = self.node.create_publisher(Float64MultiArray, 'robot/joint_states_update', 10)
+        self.pub = self.node.create_publisher(Float64MultiArray, 'robot/joint_states', 10)
         self.subscriber = JointStatesSubscriber(self.node, self.update_joint_angles_from_ros)
 
-      
         # Initialize joint angles
         self.joint_angles = [0.0] * 9
         self.lock = Lock()
@@ -55,10 +54,27 @@ class JointControlGUI(QWidget):
             layout.addWidget(label)
             layout.addWidget(slider)
 
-        # Create a button to publish joint states
-        self.publish_button = QPushButton('Publish')
-        self.publish_button.clicked.connect(self.publish_joint_states)
-        layout.addWidget(self.publish_button)
+        # Create arrow buttons for joint control
+        arrow_buttons_layout = QVBoxLayout()
+
+        self.arrow_buttons = []
+        self.arrow_labels = []
+
+        for i in range(9):
+            button_layout = QHBoxLayout()
+
+            increment_button = QPushButton(f'Joint {i+1} +')
+            decrement_button = QPushButton(f'Joint {i+1} -')
+
+            increment_button.clicked.connect(lambda _, index=i: self.adjust_joint_angle(index, 0.1))
+            decrement_button.clicked.connect(lambda _, index=i: self.adjust_joint_angle(index, -0.1))
+
+            button_layout.addWidget(increment_button)
+            button_layout.addWidget(decrement_button)
+
+            arrow_buttons_layout.addLayout(button_layout)
+
+        layout.addLayout(arrow_buttons_layout)
 
         self.setLayout(layout)
 
@@ -66,6 +82,21 @@ class JointControlGUI(QWidget):
         # Convert slider value to radians
         max_slider_value = 1000
         self.joint_angles[joint_index] = (value / max_slider_value) * (2 * math.pi)  # Convert to radians
+        
+        # Automatically publish updated joint states
+        self.publish_joint_states()
+
+    def adjust_joint_angle(self, joint_index, delta):
+        with self.lock:
+            # Adjust the joint angle by delta radians
+            self.joint_angles[joint_index] += delta
+            # Ensure joint angles are within 0 to 2π radians
+            self.joint_angles[joint_index] = max(0, min(self.joint_angles[joint_index], 2 * math.pi))
+            # Update the slider position
+            slider_value = int(self.joint_angles[joint_index] * (1000 / (2 * math.pi)))
+            self.sliders[joint_index].setValue(slider_value)
+            # Publish updated joint states
+            self.publish_joint_states()
 
     def publish_joint_states(self):
         # Create and publish the message
