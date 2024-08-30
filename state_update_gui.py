@@ -52,7 +52,7 @@ def main(args=None):
     if args is None:
         args = sys.argv
 
-    rclpy.init(args)
+    rclpy.init()
     node = rclpy.create_node('teleop_joint_keyboard')
     
     pub = node.create_publisher(Float64MultiArray, 'robot/joint_state_update', 1)
@@ -61,7 +61,7 @@ def main(args=None):
     joint_positions = [0.0] * 6
 
     try:
-        print(msg)
+        msg = Float64MultiArray()
         while True:
             key = getKey()
             if key in jointBindings.keys():
@@ -69,7 +69,6 @@ def main(args=None):
                 # Update the joint position
                 joint_positions[joint_index] += delta
                 # Create and publish the Float64MultiArray message
-                msg = Float64MultiArray()
                 msg.data = joint_positions
                 pub.publish(msg)
                 print(f"Joint positions: {joint_positions}")

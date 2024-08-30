@@ -2,7 +2,7 @@ import rclpy
 from rclpy.node import Node
 from geometry_msgs.msg import Pose
 from std_msgs.msg import Float64MultiArray
-from owl_client import OwlClient
+from owl_client import OwlClient, Joint
 import owl_client
 import time
 
@@ -22,7 +22,7 @@ class MoveJointNode(Node):
         self.subscription = self.create_subscription(
             Float64MultiArray,
             'robot/joint_state_update',
-            self.movee_callback,
+            self.move_callback,
             1
         )
 
@@ -33,18 +33,18 @@ class MoveJointNode(Node):
         zero_position = Joint()
         zero_position.Base = msg.data[0]
         zero_position.Shoulder = msg.data[1]
-        zero_position.Elbow  = msg.data[1]
-        zero_position.Wrist1 = msg.data[2]
-        zero_position.Wrist2 = msg.data[3]
-        zero_position.Wrist3 = msg.data[4]
+        zero_position.Elbow  = msg.data[2]
+        zero_position.Wrist1 = msg.data[3]
+        zero_position.Wrist2 = msg.data[4]
+        zero_position.Wrist3 = msg.data[5]
 
-        self.get_logger().info(f'Moving to pose: {zero_position}')
-        client.move_to_joint(zero_position, self.jointSpeed)
-        time.sleep(5)
+        self.get_logger().info(f'Moving to pose: {zero_position.Base}')
+        self.client.move_to_joint(zero_position, self.jointSpeed)
+        time.sleep(0.5)
 
 def main(args=None):
     rclpy.init(args=args)
-    node = MOveJointNode()
+    node = MoveJointNode()
     rclpy.spin(node)
     # node.destroy_node()
     # rclpy.shutdown()
