@@ -13,9 +13,10 @@ class MoveJointNode(Node):
         self._robot_ip = "10.42.0.3"
         self.client = OwlClient(self._robot_ip)
 
-        self.jointSpeed = 10 #degree/sec
+        self.jointSpeed = 20 #degree/sec
         
         while not self.client.is_running():
+
             time.sleep(0.2)
             self.get_logger().info("Waiting for robot to be available...")
 
@@ -40,7 +41,7 @@ class MoveJointNode(Node):
 
         self.get_logger().info(f'Moving to pose: {zero_position.Base}')
         self.client.move_to_joint(zero_position, self.jointSpeed)
-        time.sleep(0.5)
+        #time.sleep(0.1)
 
 def main(args=None):
     rclpy.init(args=args)
